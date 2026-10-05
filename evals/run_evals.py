@@ -34,7 +34,6 @@ from app.observability import Trace  # noqa: E402
 from app.providers import create_provider  # noqa: E402
 from app.providers.base import Provider  # noqa: E402
 from app.retrieval.pipeline import retrieve  # noqa: E402
-
 from evals.metrics import (  # noqa: E402
     first_relevant_rank,
     hit_rate,

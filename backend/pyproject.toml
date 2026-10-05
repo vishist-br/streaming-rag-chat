@@ -40,8 +40,12 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["app", "evals", "tests"]
+
 [tool.mypy]
 python_version = "3.12"
+mypy_path = ".."  # so the evals package (repo root) resolves
 strict = true
 plugins = ["pydantic.mypy"]
 
