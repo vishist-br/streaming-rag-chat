@@ -82,5 +82,5 @@ class LocalProvider:
             sentences = re.split(r"(?<=[.!?])\s+|\n+", body)
             best = max(sentences, key=lambda s: len(query_terms & set(_terms(s))), default="")
             if len(query_terms & set(_terms(best))) >= 2:
-                picked.append(f"{best.strip().rstrip('.')} [{source_id}].")
+                picked.append(f"{best.strip().lstrip('- ').rstrip('.')} [{source_id}].")
         return " ".join(picked) if picked else DONT_KNOW
