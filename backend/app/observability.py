@@ -39,9 +39,11 @@ def configure_logging() -> None:
     logger.propagate = False
 
 
-def log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
+def log_event(
+    event: str, *, level: int = logging.INFO, exc_info: bool = False, **fields: Any
+) -> None:
     """One JSON line per event, e.g. log_event("chat.completed", trace_id=..., total_ms=...)."""
-    logger.log(level, event, extra={"fields": fields})
+    logger.log(level, event, exc_info=exc_info, extra={"fields": fields})
 
 
 @dataclass

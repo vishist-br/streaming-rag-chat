@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class IngestResult(BaseModel):
@@ -38,3 +38,15 @@ class RetrievedChunk(BaseModel):
     vector_rank: int | None = None
     fulltext_rank: int | None = None
     flagged: bool = False  # looks like a prompt-injection attempt
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=20_000)
+
+
+class ChatRequest(BaseModel):
+    # Hard ceiling here; the configurable limit is enforced in the route.
+    question: str = Field(min_length=1, max_length=10_000)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=100)
+    mode: RetrievalMode = "hybrid_rerank"

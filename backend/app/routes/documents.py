@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
 from app.db import fetch_all
 from app.deps import PoolDep, ProviderDep, SettingsDep
+from app.guardrails import rate_limit
 from app.ingestion.parsers import UnsupportedFileTypeError
 from app.ingestion.pipeline import EmptyDocumentError, ingest_document
 from app.models import DocumentOut, IngestResult
@@ -11,7 +12,7 @@ from app.models import DocumentOut, IngestResult
 router = APIRouter(prefix="/api/documents")
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(rate_limit)])
 async def upload_document(
     file: UploadFile, pool: PoolDep, provider: ProviderDep, settings: SettingsDep
 ) -> IngestResult:

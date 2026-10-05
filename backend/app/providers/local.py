@@ -12,6 +12,7 @@ import math
 import re
 from collections.abc import AsyncIterator
 
+from app.generation.prompt import DONT_KNOW
 from app.providers.base import Completion, Embeddings, StreamChunk, Usage, estimate_tokens
 
 WORD_RE = re.compile(r"[a-z0-9]+")
@@ -21,11 +22,18 @@ STOPWORDS = frozenset(
     "a an and are as at be by can do does for from how i in is it of on or that the this to "  # noqa: SIM905
     "was what when where which who why will with".split()
 )
-DONT_KNOW = "I don't know based on the provided documents."
+
+
+def _stem(word: str) -> str:
+    """Crude suffix stripping so "lasts" matches "last". Good enough for a demo."""
+    for suffix in ("ing", "ed", "es", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            return word[: -len(suffix)]
+    return word
 
 
 def _terms(text: str) -> list[str]:
-    return [w for w in WORD_RE.findall(text.lower()) if w not in STOPWORDS]
+    return [_stem(w) for w in WORD_RE.findall(text.lower()) if w not in STOPWORDS]
 
 
 class LocalProvider:
