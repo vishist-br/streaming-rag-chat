@@ -57,7 +57,7 @@ Step by step, with the file that does it:
 3. **Retrieve** (`retrieval/pipeline.py`). The query is embedded once. `search.py` runs two
    SQL queries: cosine distance over the HNSW index, and an OR-ed `tsquery` over the GIN
    index ranked with `ts_rank_cd`. `fusion.py` merges the two id lists with RRF.
-4. **Rerank** (`retrieval/rerank.py`). In `hybrid_rerank` mode the fast model reads the top
+4. **Rerank** (`retrieval/rerank.py`). In the opt-in `hybrid_rerank` mode the fast model reads the top
    20 fused candidates and returns their numbers in relevance order. Unparseable reply:
    keep the fused order.
 5. **Flag** (`generation/stream.py`). Each chunk is checked against injection phrases; hits
@@ -147,8 +147,9 @@ class Provider(Protocol):
     def stream(self, system, prompt) -> AsyncIterator[StreamChunk]
 ```
 
-`gemini.py` implements it with the official `google-genai` SDK. `local.py` implements it
-with no network calls for demos and integration tests. Adding another model is one new
+`gemini.py` implements it with the official `google-genai` SDK. `ollama.py` implements it
+over Ollama's HTTP API for local open models. `local.py` implements it with no network
+calls for integration tests. Adding another model is one new
 class and one line in `providers/__init__.py`.
 
 ## Observability

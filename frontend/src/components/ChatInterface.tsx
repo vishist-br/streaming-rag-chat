@@ -9,8 +9,8 @@ import MessageBubble from "./MessageBubble";
 import SourcePanel from "./SourcePanel";
 
 const MODES: { value: RetrievalMode; label: string }[] = [
-  { value: "hybrid_rerank", label: "Hybrid + rerank" },
   { value: "hybrid", label: "Hybrid" },
+  { value: "hybrid_rerank", label: "Hybrid + rerank" },
   { value: "vector", label: "Vector only" },
 ];
 const MAX_QUESTION_CHARS = 2000; // keep in sync with max_question_chars in the backend config
@@ -18,7 +18,7 @@ const MAX_QUESTION_CHARS = 2000; // keep in sync with max_question_chars in the 
 export default function ChatInterface() {
   const { messages, isStreaming, send, stop } = useChat();
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState<RetrievalMode>("hybrid_rerank");
+  const [mode, setMode] = useState<RetrievalMode>("hybrid");
   const [health, setHealth] = useState<Health | null>(null);
   // Which citation is open in the source panel: a message and a 1-based source number.
   const [selected, setSelected] = useState<{ messageId: string; source: number } | null>(null);
