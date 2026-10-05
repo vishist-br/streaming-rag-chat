@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "RAG Chat — AI Knowledge Assistant",
-  description: "A production-grade streaming RAG chat app built with Next.js, Qdrant, and OpenAI.",
+  title: "RAG Chat",
+  description: "Chat with your documents: hybrid retrieval, streamed answers with citations.",
 };
 
 export default function RootLayout({

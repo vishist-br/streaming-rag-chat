@@ -1,204 +1,139 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useChat } from "@/hooks/useChat";
+import { getHealth } from "@/lib/api";
+import type { Health, RetrievalMode } from "@/lib/types";
+import DocumentsPanel from "./DocumentsPanel";
+import MessageBubble from "./MessageBubble";
+import SourcePanel from "./SourcePanel";
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  isStreaming?: boolean;
-}
+const MODES: { value: RetrievalMode; label: string }[] = [
+  { value: "hybrid_rerank", label: "Hybrid + rerank" },
+  { value: "hybrid", label: "Hybrid" },
+  { value: "vector", label: "Vector only" },
+];
+const MAX_QUESTION_CHARS = 2000; // keep in sync with max_question_chars in the backend config
 
-// ─── The Optimized Stream Hook (Phase 1 knowledge applied) ────────────────────
-function useStreamingResponse() {
-  const [streamingText, setStreamingText] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const bufferRef = useRef(""); // Silent buffer — never triggers re-renders
-  const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
+export default function ChatInterface() {
+  const { messages, isStreaming, send, stop } = useChat();
+  const [input, setInput] = useState("");
+  const [mode, setMode] = useState<RetrievalMode>("hybrid_rerank");
+  const [health, setHealth] = useState<Health | null>(null);
+  // Which citation is open in the source panel: a message and a 1-based source number.
+  const [selected, setSelected] = useState<{ messageId: string; source: number } | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const startStream = async (
-    message: string,
-    history: { role: string; content: string }[]
-  ) => {
-    bufferRef.current = "";
-    setStreamingText("");
-    setIsStreaming(true);
-
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history }),
-    });
-
-    if (!res.body) throw new Error("No response body");
-
-    const reader = res.body
-      .pipeThrough(new TextDecoderStream())
-      .getReader();
-
-    readerRef.current = reader;
-
-    // Network consumer: runs at full SSE speed, silently fills buffer
-    const consume = async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          // Parse SSE lines: "data: {...}\n\n"
-          const lines = value.split("\n").filter((l) => l.startsWith("data: "));
-          for (const line of lines) {
-            const payload = line.slice(6).trim();
-            if (payload === "[DONE]") { setIsStreaming(false); return; }
-            try {
-              const { token } = JSON.parse(payload);
-              bufferRef.current += token;
-            } catch {}
-          }
-        }
-      } finally {
-        setIsStreaming(false);
-      }
-    };
-
-    consume();
-  };
-
-  const stopStream = () => {
-    readerRef.current?.cancel("User clicked stop");
-    setIsStreaming(false);
-  };
-
-  // UI Renderer: capped at 20 FPS — decouples network speed from render speed
   useEffect(() => {
-    const interval = setInterval(() => {
-      setStreamingText((current) => {
-        if (current !== bufferRef.current) return bufferRef.current;
-        return current; // Always return a value — never undefined!
-      });
-    }, 50);
-    return () => clearInterval(interval);
+    getHealth().then(setHealth).catch(() => setHealth(null));
   }, []);
 
-  return { streamingText, isStreaming, startStream, stopStream };
-}
-
-// ─── Main Chat Interface ───────────────────────────────────────────────────────
-export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const { streamingText, isStreaming, startStream, stopStream } = useStreamingResponse();
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const prevStreamingRef = useRef("");
-
-  // Commit the streamed message to history when streaming finishes
-  useEffect(() => {
-    if (!isStreaming && prevStreamingRef.current && streamingText) {
-      setMessages((prev) => [
-        ...prev.filter((m) => !m.isStreaming),
-        { role: "assistant", content: streamingText },
-      ]);
-      prevStreamingRef.current = "";
-    }
-    if (isStreaming) {
-      prevStreamingRef.current = streamingText;
-      setMessages((prev) => {
-        const withoutStreaming = prev.filter((m) => !m.isStreaming);
-        return [
-          ...withoutStreaming,
-          { role: "assistant", content: streamingText, isStreaming: true },
-        ];
-      });
-    }
-  }, [streamingText, isStreaming]);
-
-  // Auto scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isStreaming) return;
-    const userMessage = input.trim();
+  const handleSend = () => {
+    const question = input.trim();
+    if (!question || isStreaming) return;
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
-
-    const history = messages.map(({ role, content }) => ({ role, content }));
-    await startStream(userMessage, history);
+    void send(question, mode);
   };
 
+  const selectedMessage = messages.find((m) => m.id === selected?.messageId);
+
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
-      {/* Header */}
-      <header className="border-b border-gray-800 px-6 py-4 flex items-center gap-3">
-        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-        <h1 className="font-semibold text-lg tracking-tight">RAG Chat</h1>
-        <span className="text-xs text-gray-500 ml-auto">gpt-4o-mini · text-embedding-3-small · Qdrant</span>
-      </header>
+    <div className="flex h-screen bg-gray-950 text-gray-100">
+      <DocumentsPanel />
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {messages.length === 0 && (
-          <div className="text-center text-gray-500 mt-20">
-            <p className="text-2xl mb-2">💬</p>
-            <p>Ask anything from your knowledge base</p>
-          </div>
-        )}
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-2xl px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-                msg.role === "user"
-                  ? "bg-indigo-600 text-white rounded-br-sm"
-                  : "bg-gray-800 text-gray-100 rounded-bl-sm"
-              }`}
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex flex-wrap items-center gap-3 border-b border-gray-800 px-6 py-3">
+          <h1 className="text-lg font-semibold tracking-tight">RAG Chat</h1>
+          {health?.provider === "local" && (
+            <span className="rounded bg-amber-500/15 px-2 py-0.5 text-xs text-amber-300">
+              Offline demo provider (no LLM)
+            </span>
+          )}
+          <span className="text-xs text-gray-500">
+            {health
+              ? `${health.generation_model} · ${health.embedding_model} · pgvector`
+              : "Backend not reachable"}
+          </span>
+          <label className="ml-auto flex items-center gap-2 text-xs text-gray-400">
+            Retrieval
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as RetrievalMode)}
+              className="rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-gray-200 outline-none focus:border-indigo-500"
             >
-              {msg.content}
-              {msg.isStreaming && (
-                <span className="inline-block w-1 h-4 ml-1 bg-indigo-400 animate-pulse rounded-sm" />
-              )}
-            </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
+              {MODES.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </header>
 
-      {/* Input */}
-      <div className="border-t border-gray-800 px-4 py-4 flex gap-3">
-        <input
-          id="chat-input"
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-          placeholder="Ask a question..."
-          disabled={isStreaming}
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm outline-none
-                     focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500
-                     disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-gray-500"
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-6">
+          {messages.length === 0 && (
+            <div className="mt-20 text-center text-sm text-gray-500">
+              <p className="mb-1 text-base text-gray-300">Ask a question about your documents</p>
+              <p>Answers cite the passages they are based on. Click a citation to read it.</p>
+            </div>
+          )}
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              selectedSource={selected?.messageId === message.id ? selected.source : null}
+              onCite={(source) => setSelected({ messageId: message.id, source })}
+            />
+          ))}
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="flex gap-3 border-t border-gray-800 px-4 py-4">
+          <input
+            id="chat-input"
+            type="text"
+            value={input}
+            maxLength={MAX_QUESTION_CHARS}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+            placeholder="Ask a question…"
+            aria-label="Question"
+            className="flex-1 rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm outline-none placeholder:text-gray-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          />
+          {isStreaming ? (
+            <button
+              id="stop-btn"
+              onClick={stop}
+              className="rounded-xl bg-red-600 px-5 py-3 text-sm font-medium transition-colors hover:bg-red-700"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              id="send-btn"
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-medium transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Send
+            </button>
+          )}
+        </div>
+      </main>
+
+      {selected && selectedMessage && (
+        <SourcePanel
+          sources={selectedMessage.sources}
+          cited={selectedMessage.metrics?.cited ?? []}
+          selected={selected.source}
+          onSelect={(source) => setSelected({ messageId: selectedMessage.id, source })}
+          onClose={() => setSelected(null)}
         />
-        {isStreaming ? (
-          <button
-            id="stop-btn"
-            onClick={stopStream}
-            className="px-5 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-sm font-medium transition-colors"
-          >
-            Stop
-          </button>
-        ) : (
-          <button
-            id="send-btn"
-            onClick={handleSend}
-            disabled={!input.trim()}
-            className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40
-                       disabled:cursor-not-allowed text-sm font-medium transition-colors"
-          >
-            Send
-          </button>
-        )}
-      </div>
+      )}
     </div>
   );
 }

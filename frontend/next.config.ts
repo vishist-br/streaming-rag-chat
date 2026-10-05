@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Emits a self-contained server in .next/standalone so the Docker image
-  // does not need node_modules.
-  output: "standalone",
+  // The Dockerfile sets NEXT_OUTPUT=standalone to emit a self-contained server
+  // (no node_modules in the image). Locally, `npm run start` keeps working.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
 };
 
 export default nextConfig;
