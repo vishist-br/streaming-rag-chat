@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import apply_schema, open_pool
-from app.routes import health
+from app.providers import create_provider
+from app.routes import documents, health
 
 
 @asynccontextmanager
@@ -14,6 +15,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     app.state.pool = await open_pool(settings.database_url)
     await apply_schema(app.state.pool)
+    app.state.provider = create_provider(settings)
     yield
     await app.state.pool.close()
 
@@ -29,6 +31,7 @@ def create_app() -> FastAPI:
         expose_headers=["X-Trace-Id"],
     )
     app.include_router(health.router)
+    app.include_router(documents.router)
     return app
 
 
