@@ -9,7 +9,7 @@ retrieval, reranking, grounded generation, guardrails and tracing.
 
 ![Answer with citations, sources and metrics](results/02-answer-citations-sources-metrics.png)
 
-*Screenshot taken with the offline demo provider (see [results/](results/README.md)).*
+*Real output from `llama3.2` + `nomic-embed-text` running locally through Ollama (see [results/](results/README.md)).*
 
 ## Features
 
@@ -24,7 +24,9 @@ retrieval, reranking, grounded generation, guardrails and tracing.
   injection phrases, per-IP rate limiting.
 - **Observability**: a trace id per request and one structured log line with per-stage
   latency, tokens and estimated cost. The same numbers are shown under each answer.
-- **Evaluation**: a golden dataset and a script comparing vector, hybrid and hybrid + rerank.
+- **Evaluation**: a golden dataset and a script comparing vector, hybrid and hybrid + rerank,
+  with measured results below.
+- **Swappable models**: Gemini, or local open models through Ollama, behind one interface.
 
 ## Architecture
 
@@ -44,7 +46,7 @@ flowchart LR
         OBS[Trace: latency, tokens, cost]
     end
     PG[(Postgres<br/>pgvector + tsvector)]
-    LLM[Gemini API<br/>behind Provider interface]
+    LLM[Gemini API or Ollama<br/>behind Provider interface]
 
     UI -- upload --> G
     UI -- "POST /api/chat (SSE)" --> G
@@ -73,11 +75,15 @@ docker compose up --build
 Open http://localhost:3000, upload a few files from `sample_docs/`, and ask a question.
 The API is at http://localhost:8000 (interactive docs at `/docs`).
 
-**No API key?** Run the offline demo provider. It needs no key and is clearly labelled in
-the UI. It is not a language model (answers are sentences copied from the sources), but it
-exercises every part of the pipeline:
+**No API key?** Two options:
 
 ```bash
+# Real open models on your machine through Ollama (https://ollama.com)
+ollama pull llama3.2 && ollama pull nomic-embed-text
+PROVIDER=ollama docker compose up --build
+
+# Or zero setup: an offline stand-in that is NOT a language model (answers are
+# sentences copied from the sources). Labelled in the UI; used by CI.
 PROVIDER=local docker compose up --build
 ```
 
@@ -110,16 +116,45 @@ npm run lint && npx tsc --noEmit && npm run build
 
 ## Evaluation results
 
-**Not measured yet.** The eval script needs a Gemini API key, and none was available when
-this was built, so [evals/RESULTS.md](evals/RESULTS.md) holds an empty table rather than
-made-up numbers. To produce them:
+Measured by `evals/run_evals.py` on 31 questions ([evals/golden.jsonl](evals/golden.jsonl)),
+using **local open models through Ollama**: `llama3.2` (3B) for answers, rerank and judging,
+and `nomic-embed-text` for embeddings. Full report: [evals/RESULTS.md](evals/RESULTS.md);
+per-question answers and scores: [evals/results.json](evals/results.json).
+
+| Configuration | Hit rate@5 | MRR@5 | Faithfulness (1-5) | Relevance (1-5) | Abstention rate | Mean latency (ms) |
+|---|---|---|---|---|---|---|
+| Vector only | 0.96 | 0.88 | 4.57 | 3.93 | 1.00 | 2918 |
+| Hybrid (RRF) | 0.96 | 0.83 | 4.64 | 3.68 | 1.00 | 2835 |
+| Hybrid + rerank | 0.96 | 0.54 | 4.50 | 3.82 | 1.00 | 8064 |
+
+What the numbers say, and what they do not:
+
+- **Retrieval finds the evidence 27 times out of 28** in every configuration. The corpus is
+  small (39 chunks), so hit rate is close to its ceiling and cannot separate the configurations.
+- **Hybrid did not beat vector-only here.** MRR is 0.83 against 0.88. With 28 answerable
+  questions, one question moving one rank is worth about 0.02, so this is within noise. The
+  case for hybrid (exact identifiers in a large corpus) is not tested by a corpus this size.
+- **Reranking with a 3B model made ranking worse and nearly tripled latency.** MRR dropped
+  from 0.83 to 0.54 and mean latency rose from 2.8 s to 8.1 s. The model returned a parseable
+  ranking for 29 of 31 questions, so this is the model ranking badly, not the fallback.
+  Because of this result, **rerank is opt-in and the default mode is hybrid**. Whether a
+  stronger reranker earns its latency is an open question the same script can answer.
+- **Answer scores are judged by the same small model that wrote the answers**, which is a
+  weak and self-flattering judge. Treat faithfulness and relevance as rough indicators.
+- **Abstention is 3 of 3 unanswerable questions**, counted when the answer contains the
+  "I don't know" sentence. That is a lenient check on a very small sample.
+- Latency is on a laptop with 8 GB of RAM running the models locally; it says nothing about
+  a hosted API. Cost is zero for local models.
+- **These are not Gemini numbers.** The Gemini provider has not been run (see limitations).
+
+To reproduce:
 
 ```bash
+ollama pull llama3.2 && ollama pull nomic-embed-text
 docker compose up -d db
-python evals/run_evals.py
+cd backend && pip install -e . && cd ..
+PROVIDER=ollama python evals/run_evals.py     # or PROVIDER=gemini with GEMINI_API_KEY set
 ```
-
-What it measures, over 31 questions in [evals/golden.jsonl](evals/golden.jsonl):
 
 | Metric | Meaning |
 |---|---|
@@ -128,9 +163,6 @@ What it measures, over 31 questions in [evals/golden.jsonl](evals/golden.jsonl):
 | Faithfulness (1-5) | LLM judge: is every claim in the answer supported by the retrieved sources? |
 | Relevance (1-5) | LLM judge: does the answer address the question and agree with the reference? |
 | Abstention rate | Share of unanswerable questions answered with "I don't know". |
-| Latency, cost | Mean per question, per configuration. |
-
-for three configurations: **vector only**, **hybrid (RRF)**, **hybrid + rerank**.
 
 The golden set mixes three kinds of question on purpose: exact identifiers such as
 `E-417` (where keyword search should win), paraphrases that share few words with the
@@ -168,14 +200,18 @@ its place at larger scale or when you need features like built-in sharding.
 - Only 5 chunks reach the prompt, and rerank passages are truncated to 700 characters.
 - Sources are sent before the first token, and time to first token is measured separately
   from total time, because that is what the user perceives.
-- Reranking adds a full LLM round trip before the first token. The UI lets you switch it
-  off per question, and the evals report what it buys.
+- Reranking adds a full LLM round trip before the first token. In the measured run it
+  cost about 5 seconds per question and made ranking worse, so it is off by default and
+  can be switched on per question in the UI.
 
 **Known limitations.**
 - **The Gemini provider has not been run against the live API.** It was written against
   the SDK and current docs and type-checks, but there was no key to test with. Expect to
-  adjust details (model names in `.env`, embedding request shape) on first run.
-- Eval numbers are not measured yet, for the same reason.
+  adjust details (model names in `.env`, embedding request shape) on first run. Everything
+  measured in this repo used the Ollama provider.
+- With a 3B local model, query rewriting is unreliable: it sometimes drags an earlier
+  topic into a new, unrelated question. The original question is used if the rewrite is
+  empty, but a wrong rewrite is not detected.
 - The rate limiter is in memory, so it is per process. Multiple replicas need a shared store.
 - No authentication or per-user document isolation: every user sees every document.
 - PDFs are parsed as plain text per page. Tables, multi-column layouts and scanned pages
@@ -183,7 +219,7 @@ its place at larger scale or when you need features like built-in sharding.
 - Token counts for chunking and for embedding cost are estimated at 4 characters per token.
 - Injection handling is basic: delimiting plus a phrase tripwire. It reduces risk; it does
   not make hostile documents safe.
-- The LLM judge is the same model family as the generator, which can flatter its own answers.
+- The LLM judge is the same model as the generator, which can flatter its own answers.
 - The golden set is small (31 questions over 5 short documents). Differences of a few
   points between configurations are within noise.
 
@@ -194,7 +230,7 @@ backend/app/
   ingestion/    parsers.py, chunking.py, pipeline.py
   retrieval/    search.py (SQL), fusion.py (RRF), rerank.py, pipeline.py
   generation/   prompt.py, rewrite.py, stream.py (SSE)
-  providers/    base.py (interface), gemini.py, local.py (offline demo)
+  providers/    base.py (interface), gemini.py, ollama.py, local.py (offline stand-in)
   guardrails.py, observability.py, config.py, db.py, schema.sql
 backend/tests/  unit tests (LLM mocked) + Postgres integration tests
 frontend/src/   Next.js UI: components/, hooks/useChat.ts, lib/sse.ts

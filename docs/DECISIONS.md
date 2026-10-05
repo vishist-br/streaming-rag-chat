@@ -46,8 +46,11 @@ parsing problem.
 **Why.** No extra model to host, and no PyTorch in the image. One call regardless of the
 number of candidates.
 **Cost.** A full LLM round trip before the first token, plus tokens. A cross-encoder would
-be cheaper per query and deterministic. Whether the rerank is worth it is exactly what the
-evals compare; it can be turned off per request.
+be cheaper per query and deterministic.
+**Measured.** With `llama3.2` (3B) as the reranker, MRR@5 fell from 0.83 to 0.54 and mean
+latency rose from 2.8 s to 8.1 s (see `evals/RESULTS.md`). So rerank is opt-in and the
+default mode is `hybrid`. It stays in the codebase because the result is about this model,
+not about reranking; the eval script can re-test it with a stronger one.
 
 ## 6. Structure-aware chunks of about 400 tokens with 15% overlap
 
@@ -102,12 +105,14 @@ the model could trigger, which limits what a successful injection can do.
 **Cost.** Each replica counts separately, and behind a proxy the address is the proxy's
 unless forwarded headers are configured. A shared store such as Redis is the fix.
 
-## 12. A provider interface with an offline implementation
+## 12. A provider interface with three implementations
 
-**Decision.** The pipeline depends on a three-method `Provider` protocol. Besides Gemini
-there is a `local` provider using hashed bag-of-words embeddings and extractive answers.
-**Why.** Swapping models is one class. The offline provider lets CI run real integration
-tests against Postgres and lets the app be demoed without a key.
+**Decision.** The pipeline depends on a three-method `Provider` protocol, implemented for
+Gemini (official SDK), Ollama (local open models over HTTP), and a `local` stand-in using
+hashed bag-of-words embeddings and extractive answers.
+**Why.** Swapping models is one class: the Ollama provider is about 90 lines and required
+no change to the pipeline. Ollama makes the evals reproducible by anyone without an API
+key. The offline stand-in lets CI run real integration tests against Postgres.
 **Cost.** The offline provider is not a model and must not be used to judge quality. The
 eval script refuses to write results when it is active.
 
