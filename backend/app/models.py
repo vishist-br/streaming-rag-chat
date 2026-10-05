@@ -22,3 +22,19 @@ class DocumentOut(BaseModel):
     filename: str
     num_chunks: int
     updated_at: datetime
+
+
+type RetrievalMode = Literal["vector", "hybrid", "hybrid_rerank"]
+
+
+class RetrievedChunk(BaseModel):
+    id: int
+    document: str
+    section: str
+    page: int | None
+    content: str
+    # 1-based position in each retriever's list; None if that retriever missed it.
+    # Shown in the UI so you can see *why* a chunk was retrieved.
+    vector_rank: int | None = None
+    fulltext_rank: int | None = None
+    flagged: bool = False  # looks like a prompt-injection attempt
