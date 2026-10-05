@@ -1,0 +1,24 @@
+HERON-2 FIRMWARE RELEASE NOTES
+
+Firmware 3.4.0, released 2 September 2025.
+This release adds terrain following for survey missions, which keeps a constant height above ground using the downward radar. The minimum terrain following height is 15 metres. It also fixes a bug where the return-to-home altitude was ignored if the controller disconnected during take-off. Battery health reporting is now accurate to within 2 percent.
+
+Firmware 3.3.1, released 18 June 2025.
+A maintenance release. It fixes error E-530 being shown after a normal gimbal calibration, and reduces GNSS cold start time from 45 seconds to 28 seconds. No new features.
+
+Firmware 3.3.0, released 6 May 2025.
+This release introduces Quiet mode, which limits propeller speed and reduces noise by about 4 decibels at the cost of a lower top speed of 8 m/s. It adds support for the RTK module over the 4G network, so a local base station is no longer required. The geofence database now updates automatically whenever the controller is online.
+
+Firmware 3.2.0, released 11 February 2025.
+This is the minimum firmware version accepted by the Fleet API. It encrypts flight logs on the memory card with AES-256 and adds the obstacle sensing override switch for flights inside structures. Downgrading below 3.2.0 is blocked.
+
+Firmware 3.1.2, released 20 November 2024.
+Fixes a compass calibration failure at latitudes above 65 degrees. Improves hover stability in gusty wind. This was the last release to support the original TB-40 battery.
+
+GROUND APP RELEASE NOTES
+
+Tidewater Ground 5.0, released 2 September 2025.
+The mission planner was rebuilt. Flight plans can now be drawn as polygons with up to 200 vertices, and overlap between photos can be set between 60 and 90 percent. Offline maps can be downloaded for areas of up to 400 square kilometres.
+
+Tidewater Ground 4.8, released 6 May 2025.
+Adds a live wind estimate to the flight screen and a warning when the estimate is above 11 m/s. Adds Portuguese and Japanese translations.
