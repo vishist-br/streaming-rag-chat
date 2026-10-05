@@ -9,10 +9,12 @@ from app.observability import Trace
 from app.providers.base import Provider
 
 REWRITE_SYSTEM = (
-    "Rewrite the user's latest question so it can be understood without the conversation. "
-    "Resolve pronouns and references using the conversation. Keep it one short question. "
-    "Do not answer it. If it is already standalone, return it unchanged. "
-    "Reply with only the rewritten question."
+    "You prepare search queries. You are given a conversation and the user's latest question.\n"
+    "- If the latest question is understandable on its own, return it exactly as written.\n"
+    "- Only if it depends on the conversation (words like 'it', 'that', 'they', 'and what "
+    "about...'), replace those references with what they refer to.\n"
+    "- Never add topics from the conversation that the latest question does not refer to.\n"
+    "- Do not answer the question. Reply with only the question, on one line."
 )
 HISTORY_MESSAGE_CHARS = 500  # an old answer only needs to contribute its topic
 

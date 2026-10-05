@@ -61,8 +61,8 @@ class Trace:
         self.trace_id = trace_id or uuid.uuid4().hex[:16]
         self.stages: dict[str, StageMetrics] = {}
         self._started = time.perf_counter()
-        # The offline demo provider calls no paid API, so its cost is zero.
-        self._scale = 0.0 if settings.provider == "local" else 1.0
+        # Only Gemini is a paid API; models running locally cost nothing per token.
+        self._scale = 1.0 if settings.provider == "gemini" else 0.0
         self._prices: dict[ModelKind, tuple[float, float]] = {
             "generation": (settings.price_generation_input, settings.price_generation_output),
             "fast": (settings.price_fast_input, settings.price_fast_output),

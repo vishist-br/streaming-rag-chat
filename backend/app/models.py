@@ -49,4 +49,5 @@ class ChatRequest(BaseModel):
     # Hard ceiling here; the configurable limit is enforced in the route.
     question: str = Field(min_length=1, max_length=10_000)
     history: list[ChatMessage] = Field(default_factory=list, max_length=100)
-    mode: RetrievalMode = "hybrid_rerank"
+    # Rerank is opt-in: in the measured evals it cost latency without improving ranking.
+    mode: RetrievalMode = "hybrid"
